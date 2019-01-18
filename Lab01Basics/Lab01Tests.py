@@ -61,6 +61,18 @@ def test_gcm_encrypt():
     assert len(tag) == 16
 
 @pytest.mark.task2
+def test_gcm_encrypt_bad_key_length():
+    from os import urandom
+    from pytest import raises
+
+    K = urandom(16)
+    message = u"Hello World!"
+    with raises(Exception) as excinfo:
+        iv, ciphertext, tag = encrypt_message(K, message, 999)
+
+    assert 'Invalid key length' in str(excinfo.value)
+
+@pytest.mark.task2
 def test_gcm_decrypt():
     """ Tests decryption with AES-GCM """
     from os import urandom
@@ -74,6 +86,20 @@ def test_gcm_decrypt():
 
     m = decrypt_message(K, iv, ciphertext, tag)
     assert m == message
+
+@pytest.mark.task2
+def test_gcm_decrypt_bad_key_length():
+    from os import urandom
+    from pytest import raises
+
+    K = urandom(16)
+    message = u"Hello World!"
+    iv, ciphertext, tag = encrypt_message(K, message)
+
+    with raises(Exception) as excinfo:
+        m = decrypt_message(K, iv, ciphertext, tag, 999)
+
+    assert 'Invalid key length' in str(excinfo.value)
 
 @pytest.mark.task2
 def test_gcm_fails():
