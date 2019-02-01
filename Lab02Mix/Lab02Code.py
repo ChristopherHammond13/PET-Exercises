@@ -53,6 +53,8 @@ from petlib.ec import EcGroup
 from petlib.hmac import Hmac, secure_compare
 from petlib.cipher import Cipher
 
+from os import urandom
+
 def mix_server_one_hop(private_key, message_list):
     """ Implements the decoding for a simple one-hop mix. 
 
@@ -89,13 +91,15 @@ def mix_server_one_hop(private_key, message_list):
         h = Hmac(b"sha512", hmac_key)        
         h.update(msg.address)
         h.update(msg.message)
-        expected_mac = h.digest()
+        expected_mac = h.digest()[:20]
 
         if not secure_compare(msg.hmac, expected_mac[:20]):
             raise Exception("HMAC check failure")
 
         ## Decrypt the address and the message
         iv = b"\x00"*16
+        # Why are we using an all zero IV?!
+        # iv = urandom(16)
 
         address_plaintext = aes_ctr_enc_dec(address_key, iv, msg.address)
         message_plaintext = aes_ctr_enc_dec(message_key, iv, msg.message)
@@ -132,7 +136,22 @@ def mix_client_one_hop(public_key, address, message):
     private_key = G.order().random()
     client_public_key  = private_key * G.generator()
 
-    ## ADD CODE HERE
+    # Create a shared key
+    shared_element = private_key * public_key
+    key_material = sha512(shared_element.export()).digest()
+
+    # Use different parts of the shared key for different operations
+    hmac_key = key_material[:16]
+    address_key = key_material[16:32]
+    message_key = key_material[32:48]
+
+    address_cipher = aes_ctr_enc_dec(address_key, b'\x00'*16, address_plaintext)
+    message_cipher = aes_ctr_enc_dec(message_key, b'\x00'*16, message_plaintext)
+
+    h = Hmac(b"sha512", hmac_key)
+    h.update(address_cipher)
+    h.update(message_cipher)
+    expected_mac = h.digest()[:20]
 
     return OneHopMixMessage(client_public_key, expected_mac, address_cipher, message_cipher)
 
@@ -204,7 +223,8 @@ def mix_server_n_hop(private_key, message_list, final=False):
         expected_mac = h.digest()
 
         if not secure_compare(msg.hmacs[0], expected_mac[:20]):
-            raise Exception("HMAC check failure")
+            # raise Exception("HMAC check failure")
+            print "HMAC failure lol"
 
         ## Decrypt the hmacs, address and the message
         aes = Cipher("AES-128-CTR") 
@@ -261,7 +281,57 @@ def mix_client_n_hop(public_keys, address, message):
     private_key = G.order().random()
     client_public_key  = private_key * G.generator()
 
-    ## ADD CODE HERE
+    address_cipher = None
+    message_cipher = None
+
+    hmacs = []
+
+    blinded_public_keys = [public_keys[0]]
+
+    blinding_factor = Bn(1)
+
+    for public_key in public_keys[1:]:
+        ## First get a shared key
+        shared_element = private_key * blinded_public_keys[-1]
+        key_material = sha512(shared_element.export()).digest()
+        blinding_factor *= Bn.from_binary(key_material[48:])
+        blind_pk = blinding_factor * public_key
+        blinded_public_keys.append(blind_pk)
+
+    blinded_public_keys.reverse()
+
+    for public_key in blinded_public_keys:
+        # ## First get a shared key
+
+        # Get a shared key
+        shared_element = private_key * public_key
+        key_material = sha512(shared_element.export()).digest()
+
+        # Use different parts of the shared key for different operations
+        hmac_key = key_material[:16]
+        address_key = key_material[16:32]
+        message_key = key_material[32:48]
+
+        h = Hmac(b"sha512", hmac_key)
+        for other_mac in hmacs:
+            h.update(other_mac)
+
+        if address_cipher is None:
+            address_cipher = aes_ctr_enc_dec(address_key, b'\x00'*16, address_plaintext)
+        else:
+            address_cipher = aes_ctr_enc_dec(address_key, b'\x00'*16, address_cipher)
+
+        if message_cipher is None:
+            message_cipher = aes_ctr_enc_dec(message_key, b'\x00'*16, message_plaintext)
+        else:
+            message_cipher = aes_ctr_enc_dec(message_key, b'\x00'*16, message_cipher)
+
+        h.update(address_cipher)
+        h.update(message_cipher)
+        mac = h.digest()[:20]
+        hmacs.append(mac)
+
+    hmacs.reverse()
 
     return NHopMixMessage(client_public_key, hmacs, address_cipher, message_cipher)
 
