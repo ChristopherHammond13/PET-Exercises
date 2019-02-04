@@ -381,19 +381,74 @@ def analyze_trace(trace, target_number_of_friends, target=0):
     friends of the target.
     """
 
-    ## ADD CODE HERE
+    possible_friends = dict()
 
-    return []
+    for msg in trace:
+        if target in msg[0]:
+            for recipient in msg[1]:
+                if recipient in possible_friends:
+                    possible_friends[recipient] += 1
+                else:
+                    possible_friends[recipient] = 1
+
+    sorted_friends = []
+    for key, _ in sorted(possible_friends.iteritems(), key=lambda (k, v): (v, k), reverse=True):
+        sorted_friends.append(key)
+
+    return sorted_friends[:target_number_of_friends]
 
 ## TASK Q1 (Question 1): The mix packet format you worked on uses AES-CTR with an IV set to all zeros. 
 #                        Explain whether this is a security concern and justify your answer.
 
-""" TODO: Your answer HERE """
+"""
+Ordinarily, this would be a serious security concern as it would leave the function vulnerable to a
+number of attacks, including a ciphertext-only attack and an n-time pad (where n is the number of
+available ciphertexts to work with). However, this is reliant on the same key being used in every
+message.
+
+As we generate a new random keypair for every message, and therefore a new shared key, we still have
+adequate privacy even with a zero IV as individual ciphertexts cannot be combined to reveal either the
+key or their mutual contents.
+
+Therefore, in this case alone, it is not a security concern, but in the general case having a zero IV
+can be catastrophic and it should be avoided.
+
+Of course, this relies on a perfect random number generator that means that the same keypair will never
+be generated twice. Without an IV, there is only one 'random factor', as it were, but we consider it
+mathematically infeasible to have two keys the same due to having a large key length.
+"""
 
 
 ## TASK Q2 (Question 2): What assumptions does your implementation of the Statistical Disclosure Attack 
 #                        makes about the distribution of traffic from non-target senders to receivers? Is
 #                        the correctness of the result returned dependent on this background distribution?
 
-""" TODO: Your answer HERE """
+"""
+
+1) We assume that there is zero latency, and therefore that a message going into a mixer will be immediately
+   sent out the other side of it. In reality, the latency on individual messages can vary, and a good mixer
+   may arbitrarily add latency randomly to make the distribution of messages harder to follow.
+   
+   The correctness relies on this as in real life we can't know for sure when data coming out of a mixer
+   was sent into the mixer.
+
+2) We assume in this case that there is only one mixer. In a multi-mixer setup, the client could change the
+   traffic's route at any time to use a different path.
+
+3) We assume that there is sufficient data being sent to each friend such that the amount of traffic
+   going in that direction is significantly higher than the traffic going between other clients.
+   If the client communicated a small amount of data to many different targets, this attack would be far
+   harder to mount as there would be significantly less traffic going from the target client to their 'friends'.
+
+4) We assume that all packets sent from the target to a destination server are valid communication, and not decoy
+   packets.
+
+5) All the data shown is modelled as perfectly random transmissions, but in reality a lot of private communication,
+   particularly on networks such as Tor, is standard TCP internet traffic. By nature, that type of traffic is quite
+   'bursty', so there will be many packets in one go and then the target will stop transmitting for anywhere from a
+   few seconds to many minutes if they are reading a long webpage. On the other hand, private messaging may create
+   many singular packets directed to/sent from one destination (the messaging server) but over random periods of
+   time.
+
+"""
 
