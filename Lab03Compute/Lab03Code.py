@@ -16,8 +16,9 @@
 # Group Members: TODO
 ###########################
 
-
+from petlib.bn import Bn
 from petlib.ec import EcGroup
+
 
 def setup():
     """Generates the Cryptosystem Parameters."""
@@ -31,7 +32,8 @@ def keyGen(params):
    """ Generate a private / public key pair """
    (G, g, h, o) = params
    
-   # ADD CODE HERE
+   priv = o.random()
+   pub = priv * g
 
    return (priv, pub)
 
@@ -40,7 +42,15 @@ def encrypt(params, pub, m):
     if not -100 < m < 100:
         raise Exception("Message value to low or high.")
 
-   # ADD CODE HERE
+    (G, g, h, o) = params
+    k = o.random()                  # Private Key
+    g_pow_k = k * g                 # g^k
+    pk_pow_k = k * pub              # g^(xk)
+    h_pow_m = m * h                 # h^m
+
+    message = pk_pow_k + h_pow_m
+
+    c = (g_pow_k, message)
 
     return c
 
@@ -75,7 +85,9 @@ def decrypt(params, priv, ciphertext):
     assert isCiphertext(params, ciphertext)
     a , b = ciphertext
 
-   # ADD CODE HERE
+    (G, g, h, o) = params
+
+    hm = b - (priv * a)
 
     return logh(params, hm)
 
@@ -88,10 +100,23 @@ def add(params, pub, c1, c2):
     """ Given two ciphertexts compute the ciphertext of the 
         sum of their plaintexts.
     """
+
+    # Adding to none returns the other parameter
+    if c1 is None:
+        assert isCiphertext(params, c2)
+        return c2
+    if c2 is None:
+        assert isCiphertext(params, c1)
+        return c1
+
+    # Expect both parameters to be cipher texts that can be added
     assert isCiphertext(params, c1)
     assert isCiphertext(params, c2)
 
-   # ADD CODE HERE
+    (a1, b1) = c1
+    (a2, b2) = c2
+
+    c3 = (a1 + a2, b1 + b2)
 
     return c3
 
@@ -100,7 +125,8 @@ def mul(params, pub, c1, alpha):
         product of the plaintext time alpha """
     assert isCiphertext(params, c1)
 
-   # ADD CODE HERE
+    (a, b) = c1
+    c3 = (Bn(alpha) * a, Bn(alpha) * b)
 
     return c3
 
@@ -113,7 +139,14 @@ def groupKey(params, pubKeys=[]):
     """ Generate a group public key from a list of public keys """
     (G, g, h, o) = params
 
-   # ADD CODE HERE
+    pub = None
+    for pub_key in pubKeys:
+        if pub is None:
+            pub = pub_key
+        else:
+            pub = pub + pub_key
+
+    # pub = pub.mod(o)
 
     return pub
 
@@ -122,7 +155,11 @@ def partialDecrypt(params, priv, ciphertext, final=False):
         If final is True, then return the plaintext. """
     assert isCiphertext(params, ciphertext)
     
-    # ADD CODE HERE
+    (G, g, h, o) = params
+
+    a1, b = ciphertext
+
+    b1 = b - (priv * a1)
 
     if final:
         return logh(params, b1)
@@ -141,8 +178,18 @@ def corruptPubKey(params, priv, OtherPubKeys=[]):
         public key corresponding to a private key known to the
         corrupt authority. """
     (G, g, h, o) = params
-    
-   # ADD CODE HERE
+
+    my_priv_key = priv * g
+
+    pub = None
+
+    for k in OtherPubKeys:
+        if pub is None:
+            pub = -k
+        else:
+            pub -= k
+
+    pub += my_priv_key
 
     return pub
 
@@ -157,7 +204,8 @@ def encode_vote(params, pub, vote):
         zero and the votes for one."""
     assert vote in [0, 1]
 
-   # ADD CODE HERE
+    v0 = encrypt(params, pub, (1 - vote))
+    v1 = encrypt(params, pub, vote)
 
     return (v0, v1)
 
@@ -165,8 +213,13 @@ def process_votes(params, pub, encrypted_votes):
     """ Given a list of encrypted votes tally them
         to sum votes for zeros and votes for ones. """
     assert isinstance(encrypted_votes, list)
-    
-   # ADD CODE HERE
+
+    tv0 = None
+    tv1 = None
+
+    for (v0, v1) in encrypted_votes:
+        tv0 = add(params, pub, v0, tv0)
+        tv1 = add(params, pub, v1, tv1)
 
     return tv0, tv1
 
@@ -217,7 +270,22 @@ def simulate_poll(votes):
 # What is the advantage of the adversary in guessing b given your implementation of 
 # Homomorphic addition? What are the security implications of this?
 
-""" Your Answer here """
+"""
+Although the cipher texts may not be decryptable themselves, as they were encrypted
+in the public key of H2, it is possible for A to determine which cipher texts
+Ca, Cb and Cc were combined (as they are added together homomorphically), and
+from this it is possible to calculate the value of b.
+
+In the case of b = 0 => C = E(Pa + Pb) = Ca + Cb
+In the case of b = 1 => C = E(Pb + Pc) = Cb + Cc
+
+Since homomorphic encryption is inherently malleable, and ElGamal, RSA and others
+are vulnerable to this, it is possible to compute all encrypted combinations of
+Ca, Cb and Cc even without the source messages as there are no measures such
+as CBC in place to prevent this. Therefore, A can just generate all permutations
+of Ca, Cb and Cc and then match against C. If A knows the rules for combining
+Pa, Pb and Pc in the case of b, A will then be able to infer the value of b.
+"""
 
 ###########################################################
 # TASK Q2 -- Answer questions regarding your implementation
@@ -228,4 +296,25 @@ def simulate_poll(votes):
 # that it yields an arbitrary result. Can those malicious actions 
 # be detected given your implementation?
 
-""" Your Answer here """
+"""
+There is no sanity checking on the data coming into the voting function.
+For example, process_votes is quite happy to add the votes together
+regardless of the vote value. It also does not check the number of
+votes cast (e.g. to ensure it matches the number of voters), nor does
+it check how many times each person has voted.
+The following attacks could work quite reasonably if an attacker could
+control encode_vote:
+a) The attacker could keep state and submit votes in pairs, one for each
+   candidate after each pair of votes, ignoring what each voter actually
+   wrote. That way, there would be no result because the votes would
+   be split exactly 50/50.
+b) The attacker could manipulate the result so that instead of submitting
+   one vote for each candidate, one candidate is given multiple votes by
+   changing the value that is encoded.
+   For example, if the attacker wanted candidate 1 to win, they could
+   encrypt 2 * vote for each time candidate 1 is voted for so that when
+   process_votes is run the number 2 will be added to the vote tally
+   instead of 1 each time candidate 1 is voted for, doubling their votes.
+   In addition, the number of encrypted messages would be consistent with
+   the number of voters, making the bug quite difficult to spot.
+"""
