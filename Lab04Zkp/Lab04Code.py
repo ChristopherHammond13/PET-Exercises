@@ -51,7 +51,11 @@ def proveKey(params, priv, pub):
     """  
     (G, g, hs, o) = params
     
-    ## YOUR CODE HERE:
+    W = o.random()
+    witness = W * g
+
+    c = to_challenge([g, witness])
+    r = W - (c * priv) % o
     
     return (c, r)
 
@@ -91,7 +95,25 @@ def proveCommitment(params, C, r, secrets):
     (G, g, (h0, h1, h2, h3), o) = params
     x0, x1, x2, x3 = secrets
 
-    ## YOUR CODE HERE:
+    (W, W0, W1, W2, W3) = [o.random() for _ in range(5)]
+
+    Wg   = W  * g
+    W0h0 = W0 * h0
+    W1h1 = W1 * h1
+    W2h2 = W2 * h2
+    W3h3 = W3 * h3
+
+    witness = Wg + W0h0 + W1h1 + W2h2 + W3h3
+
+    c = to_challenge([g, h0, h1, h2, h3, witness])
+
+    rr = W -  ((c * r) % o)
+    r0 = W0 - ((c * x0) % o)
+    r1 = W1 - ((c * x1) % o)
+    r2 = W2 - ((c * x2) % o)
+    r3 = W3 - ((c * x3) % o)
+
+    responses = [r0, r1, r2, r3, rr]
 
     return (c, responses)
 
@@ -138,9 +160,17 @@ def verifyDLEquality(params, K, L, proof):
     (G, g, (h0, h1, h2, h3), o) = params
     c, r = proof
 
-    ## YOUR CODE HERE:
+    # K: pub key 1
+    # L: pub key 2
+    # c: challenge
+    # r: response
 
-    return # YOUR RETURN HERE
+    k_verify = (c * K) + (r * g)
+    l_verify = (c * L) + (r * h0)
+
+    c2 = to_challenge([g, h0, k_verify, l_verify])
+
+    return c == c2
 
 #####################################################
 # TASK 4 -- Prove correct encryption and knowledge of 
@@ -163,7 +193,15 @@ def proveEnc(params, pub, Ciphertext, k, m):
     (G, g, (h0, h1, h2, h3), o) = params
     a, b = Ciphertext
 
-    ## YOUR CODE HERE:
+    w1, w2 = [o.random() for _ in range(2)]
+
+    Wa = w1 * g
+    Wb = (w1 * pub) + (w2 * h0)
+
+    c = to_challenge([g, h0, Wa, Wb, pub, a, b])
+
+    rk = (w1 - (c * k)) % o
+    rm = (w2 - (c * m)) % o
 
     return (c, (rk, rm))
 
@@ -173,9 +211,18 @@ def verifyEnc(params, pub, Ciphertext, proof):
     a, b = Ciphertext    
     (c, (rk, rm)) = proof
 
-    ## YOUR CODE HERE:
+    # k_verify = (c * K) + (r * g)
+    # l_verify = (c * L) + (r * h0)
 
-    return ## YOUR RETURN HERE
+    # c2 = to_challenge([g, h0, k_verify, l_verify])
+
+    k_verify = (c * a) + (rk * g)
+    l_verify = (c * b) + (rk * pub) + (rm * h0)
+
+    c2 = to_challenge(
+        [g, h0, k_verify, l_verify, pub, a, b]
+    )
+    return c == c2
 
 
 #####################################################
@@ -198,17 +245,42 @@ def prove_x0eq10x1plus20(params, C, x0, x1, r):
     """ Prove C is a commitment to x0 and x1 and that x0 = 10 x1 + 20. """
     (G, g, (h0, h1, h2, h3), o) = params
 
-    ## YOUR CODE HERE:
+    """
+    Prover(Bob) produces:
+    random w1, w2; W = g^w1 . h^w2
+    c = H(g, h, C, W)
+    r1 = w1 - (c v)
+    r2 = w2 - (c o)
+    Send (c, r1, r2)
 
-    return ## YOUR RETURN HERE
+    Here, r and x0, + x1
+    """
+
+    w1 = o.random()
+    w2 = o.random()
+
+    w = w1 * g + w2 * h1 + (10 * w2 * h0)
+
+    c = to_challenge([g, h0, h1, w])
+
+    r1 = (w1 - (c * r)) % o
+    r2 = (w2 - (c * x1)) % o
+
+    return (c, (r1, r2))
 
 def verify_x0eq10x1plus20(params, C, proof):
     """ Verify that proof of knowledge of C and x0 = 10 x1 + 20. """
     (G, g, (h0, h1, h2, h3), o) = params
+    (c, (r1, r2)) = proof  # Decode our prove function from before
+    """
+    H(g, h, C, g^r1 h^r2 C^c) == c
+    """
 
-    ## YOUR CODE HERE:
+    w = r1 * g + r2 * h1 + (10 * r2 * h0) + c * (C - (20 * h0))
 
-    return ## YOUR RETURN HERE
+    c2 = to_challenge([g, h0, h1, w])
+
+    return c == c2
 
 #####################################################
 # TASK 6 -- (OPTIONAL) Prove that a ciphertext is either 0 or 1
