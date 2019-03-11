@@ -325,7 +325,20 @@ def test_bin_incorrect():
 # that  deviates from the Schnorr identification protocol? Justify 
 # your answer by describing what a dishonest verifier may do.
 
-""" TODO: Your answer here. """
+"""
+Plausible deniability only exists in the protocol when the challenge
+chosen by the verifier is random. An honest verifier in the interactive
+Schnorr protocol would therefore choose only a random challenge so that
+there is no connection between the challenge and the prover.
+The fact that the equations can be 'simulated' outside of the arrangement
+is a property of this plausible deniability property.
+
+If the verifier chooses a deterministic challenge the plausible
+deniability is gone. Such a case may be expected for identity
+verification (such is the case in the non-interactive Schnorr
+protocol), but such behaviour is nefarious in cases where the prover
+is told that plausible deniability can be expected.
+"""
 
 #####################################################
 # TASK Q2 - Answer the following question:
@@ -338,7 +351,13 @@ def test_bin_incorrect():
 #
 # Hint: Look at "test_prove_something" too.
 
-""" TODO: Your answer here. """
+"""
+The verifier can verify that the prover possesses one of the
+two secret values x and y, however the prover only needs to
+prove that they possess either x or y. The other parameter
+can be random / simulated, and the verifier will not know
+which one is random and which is either x or y.
+"""
 
 def prove_something(params, KX, KY, y):
     (G, g, _, o) = params
