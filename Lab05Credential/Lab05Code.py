@@ -90,10 +90,21 @@ def credential_EncryptUserSecret(params, pub, priv):
     #                     b = k * pub + v * g and 
     #                     pub = priv * g}
 
-    ## TODO
+    (kA, kV, kPriv) = [o.random() for _ in range(0, 3)]
+
+    Wa = kA * g
+    Wb = kA * pub + kV * g
+    Wpriv = kPriv * g
+
+    c = to_challenge([g, pub, a, b, Wa, Wb, Wpriv])
+
+    rk = (kA - (c * k)) % o
+    rv = (kV - (c * v)) % o
+    rpriv = (kPriv - (c * priv)) % o
 
     # Return the fresh v, the encryption of v and the proof.
     proof = (c, rk, rv, rpriv)
+
     return v, ciphertext, proof
 
 
@@ -141,13 +152,23 @@ def credential_Issuing(params, pub, ciphertext, issuer_params):
     # 1) Create a "u" as u = b*g 
     # 2) Create a X1b as X1b == b * X1 == (b * x1) * h
     #     and x1b = (b * x1) mod o 
-    
-    # TODO 1 & 2
+
+    # Step 1
+    test = o.random()
+    u = test * g
+
+    # Step 2
+    X1b_1 = test * X1
+    X1b_2 = test * x1 * h
+    assert(X1b_1 == X1b_2)
+    x1b = (test * x1) % o
 
     # 3) The encrypted MAC is u, and an encrypted u_prime defined as 
     #    E( (b*x0) * g + (x1 * b * v) * g ) + E(0; r_prime)
     
-    # TODO 3
+    r_prime = o.random()
+    new_a = (r_prime * g) + (x1b * a)
+    new_b = (r_prime * pub) + (x1b * b) + (x0 * u)
 
     ciphertext = new_a, new_b
 
@@ -161,9 +182,50 @@ def credential_Issuing(params, pub, ciphertext, issuer_params):
     #       new_b = r_prime * pub + x1b * b + x0 * u 
     #       Cx0 = x0 * g + x0_bar * h }
 
-    ## TODO proof
 
-    proof = (c, rs, X1b) # Where rs are multiple responses
+    (kX1, kTest, kx1b, kr_prime, kx0, kx0_bar) = [
+        o.random() for _ in range(6)
+    ]
+
+    WX1 = kX1 * h
+    WX1b_1 = kTest * X1
+    Wx1b_2 = kx1b * h
+    Wu = kTest * g
+    Wnew_a = (kr_prime * g) + (kx1b * a)
+    Wnew_b = (kr_prime * pub) + (kx1b * b) + (kx0 * u)
+    WCx0 = (kx0 * g) + (kx0_bar * h)
+
+    c = to_challenge([
+        g,
+        h,
+        pub,
+        a,
+        b,
+        X1,
+        X1b_1,
+        new_a,
+        new_b,
+        Cx0,
+        WX1,
+        WX1b_1,
+        Wx1b_2,
+        Wu,
+        Wnew_a,
+        Wnew_b,
+        WCx0
+    ])
+
+    rx1 = (kX1 - (c * x1)) % o
+    rtest = (kTest - (c * test)) % o
+    rx1b = (kx1b - (c * x1b)) % o
+    rr_prime = (kr_prime - (c * r_prime)) % o
+    rx0 = (kx0 - (c * x0)) % o
+    rx0_bar = (kx0_bar - (c * x0_bar)) % o
+
+    rs = [rx1, rtest, rx1b, rr_prime, rx0, rx0_bar]
+
+    # Can use X1b_1 or X1b_2 as X1b_1 == X1b_2
+    proof = (c, rs, X1b_1) # Where rs are multiple responses
 
     return u, ciphertext, proof
 
@@ -226,12 +288,16 @@ def credential_show(params, issuer_pub_params, u, u_prime, v):
     #    using (alpha * u, alpha * u_prime) for a
     #    random alpha.
     
-    # TODO 1
+    alpha = o.random()
+    u = alpha * u
+    u_prime = alpha * u_prime
 
     # 2) Implement the "Show" protocol (p.9) for a single attribute v.
     #    Cv is a commitment to v and Cup is C_{u'} in the paper. 
 
-    # TODO 2
+    (z, r) = [o.random() for _ in range(2)]
+    Cv = (v * u) + (z * h)
+    Cup = u_prime + (r * g)
 
     tag = (u, Cv, Cup)
 
@@ -241,9 +307,20 @@ def credential_show(params, issuer_pub_params, u, u_prime, v):
     #           Cv = v *u + z1 * h and
     #           V  = r * (-g) + z1 * X1 }
 
-    ## TODO proof
+    (wr, wz, wv) = [o.random() for _ in range(3)]
 
-    proof = (c, rr, rz1, rv)
+    WCv = (wv * u) + (wz * h)
+    WV = (wr * (-g)) + (wz * X1)
+
+    c = to_challenge([
+        g, h, u, WCv, WV, Cv, X1, Cx0, Cup
+    ])
+
+    rr = (wr - (c * r)) % o
+    rz = (wz - (c * z)) % o
+    rv = (wv - (c * v)) % o
+
+    proof = (c, rr, rz, rv)
     return tag, proof
 
 def credential_show_verify(params, issuer_params, tag, proof):
@@ -260,7 +337,13 @@ def credential_show_verify(params, issuer_params, tag, proof):
     (c, rr, rz1, rv) = proof
     (u, Cv, Cup) = tag
 
-    ## TODO
+    V = (x0 * u) + (x1 * Cv) - Cup
+    WCv_prime = (rv * u) + (rz1 * h) + (c * Cv)
+    WV_prime = rr * (-g) + (rz1 * X1) + (c * V)
+
+    c_prime = to_challenge([
+        g, h, u, WCv_prime, WV_prime, Cv, X1, Cx0, Cup
+    ])
 
     return c == c_prime
 
@@ -284,7 +367,36 @@ def credential_show_pseudonym(params, issuer_pub_params, u, u_prime, v, service_
     N = G.hash_to_point(service_name)
     pseudonym = v * N
 
-    ## TODO (use code from above and modify as necessary!)
+    (z1, r) = [o.random() for _ in range(2)]
+
+    Cv = (v * u) + (z1 * h)
+    Cup = u_prime + (r * g)
+    tag = (u, Cv, Cup)
+
+    # Proof of knowledge of the statement
+    #
+    # NIZK{(r, z1,v): 
+    #           Cv = v *u + z1 * h and
+    #           V  = r * (-g) + z1 * X1 }
+
+    (wr, wz, wv) = [o.random() for _ in range(3)]
+
+    WCv = (wv * u) + (wz * h)
+    WV = (wr * (-g)) + (wz * X1)
+
+    # Pseudonym
+    WPseudo = wv * N
+
+    c = to_challenge([
+        g, h, u, WCv, WV, Cv, X1, Cx0, Cup, WPseudo, pseudonym
+    ])
+
+    rr = (wr - (c * r)) % o
+    rz = (wz - (c * z1)) % o
+    rv = (wv - (c * v)) % o
+    rPseudo = (wv -(c * v)) % o
+
+    proof = (c, rr, rz, rv, rPseudo)
 
     return pseudonym, tag, proof
 
@@ -304,7 +416,18 @@ def credential_show_verify_pseudonym(params, issuer_params, pseudonym, tag, proo
 
     ## Verify the correct Show protocol and the correctness of the pseudonym
 
-    # TODO (use code from above and modify as necessary!)
+    (c, rr, rz, rv, rPseudo) = proof
+    (u, Cv, Cup) = tag
+
+    V = (x0 * u) + (x1 * Cv) - Cup
+
+    WCv_prime = (rv * u) + (rz * h) + (c * Cv)
+    WV_prime = rr * (-g) + (rz * X1) + (c * V)
+    WPseudo_prime = (rPseudo * N) + (c * pseudonym)
+
+    c_prime = to_challenge([
+        g, h, u, WCv_prime, WV_prime, Cv, X1, Cx0, Cup, WPseudo_prime, pseudonym
+    ])
 
     return c == c_prime
 
@@ -317,4 +440,25 @@ def credential_show_verify_pseudonym(params, issuer_params, pseudonym, tag, proo
 # What would the credential represent, and what statements
 # would need to be shown to a verifier.
 
-""" Your answer here. """
+"""
+We work on the principle that the credential provider is able to authenticate
+users, but individual services should not be able to collude and combine data
+to understand which pseudonyms represent the same users. The implementation
+of a pseudonym based on a MAC of a user's identity + some randomness
+provides the privacy attribute desired.
+
+The ensure integrity and privacy are conserved, a couple of principles must
+be followed:
+1) The user should generate a new pseudonym for every transaction, even if the
+   same amount of cash is being sent to the same recipient
+2) To ensure integrity, a verifiable proof of cash being owned should be issued
+   by the credential provider so that the purchaser can have proof that they
+   have the money they claim to have, and also so that the purchaser can
+   generate a new pseudonym for a transaction
+
+Each credential should represent:
+1) The amount of money the purchaser is sending, with a proof that this
+   cash actually exists
+2) A use-once pseudonym for the purchaser
+3) Verifiable ZNPs proving that #1 and #2 are valid
+"""
